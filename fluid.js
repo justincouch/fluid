@@ -174,6 +174,10 @@ function adjustSprings(){
 	for (var i=0; i<numParticles; i++){
 		particles[i].adjustSprings();
 	}
+	for (var i=0; i<springs.length; i++)
+	{
+		springs[i].update();
+	}
 }
 
 function applySpringDisplacements(){
@@ -608,34 +612,27 @@ function Spring(a, b, restLength) {
   this.strength = SPRINGSTRENGTH;
   //this.mamb = values.invMass * values.invMass;
   
+  this.update = function()
+  {
+  	pta.x = particles[a].x;
+  	pta.y = particles[a].y;
+  	ptb.x = particles[b].x;
+  	ptb.y = particles[b].y;
+
+  	var Lij = this.restLength;
+  	var rij = this.pta.getDistance(ptb);
+  	var rijunit;
+  	var D = SPRINGK * (1 - (Lij/interactionRadius)) * (Lij - rij);
+  	particles[a].x -= D/2;
+  	particles[a].y -= D/2;
+  	particles[b].x += D/2;
+  	particles[b].y += D/2;
+  }
+
   this.acirc = new Path.Circle(this.a, 10);
   this.acirc.strokeColor = 'blue';
   this.bcirc = new Path.Circle(this.b, 10);
   this.bcirc.strokeColor = 'red';
-};
-
-Spring.prototype.update = function() {
-  var delta = this.ptb - this.pta;
-  var dist = delta.length;
-  var normDistStrength = (dist - this.restLength) / dist * this.strength;
-  //console.log("delta: " + delta);
-  var delttest = delta;
-  delta *= normDistStrength * 0.2;
-  delttest *= normDistStrength * 0.2;
-  //console.log("delttest: " + delttest);
-  //console.log("deltax: " + delta.x + ", deltay: " + delta.y);
-  
-  if (!this.a.fixed){
-    particles[this.a].x += delta.x;
-    particles[this.a].y += delta.y;
-  }
-  if (!this.b.fixed){
-    particles[this.b].x -= delta.x;
-    particles[this.b].y -= delta.y;
-  }
-  
-  this.acirc.position = this.a;
-  this.bcirc.position = this.b;
 };
 
 
