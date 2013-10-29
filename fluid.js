@@ -1,39 +1,7 @@
 
 
 
-/*
 
-Simulation step:
-
-for each particle i{
-	apply gravity
-	vi = vi + t*g
-
-	apply viscosity
-}
-
-for each particle i {
-	save previous position
-	xiprev = xi
-
-	advance to predicted position
-	xi = xi + t*vi
-}
-
-adjust springs
-	// modify positions according to springs
-	// double density relaxation, and collisions
-
-applySpringDisplacements
-double Density Relaxation
-resolveCollisions
-
-for each particle i {
-	use previous position to compute next velocity
-	vi = (xi - xiprev)/t
-}
-
-*/
 var SPRINGSTRENGTH = 0.05;
 var SPRINGGAMMA = 0.1;
 var SPRINGALPHA = 0.3;
@@ -43,6 +11,9 @@ var STIFFNESSPARAMETERNEAR = 0.01;  // k near
 var RESTDENSITY = 10;  // p0
 var GRAVITY = 0.5;
 var TIMESTEP = 1;
+
+var VISCOSITYSIGMA = 0.01;
+var VISCOSITYBETA = 0.01;
 
 ////////////////////////////////////////////////
 // METABALLS //
@@ -55,6 +26,8 @@ var metaballMaxDistance = 150;
 var metaballV = 0.5;
 
 var particleCircleRadius = 20;
+
+var showSpringPaths = true;
 
 var numParticles = 20;
 var particles = {};
@@ -117,54 +90,93 @@ function init(){
 	}
 }
 
+/*
 
+Simulation step:
+
+for each particle i{
+	apply gravity
+	vi = vi + t*g
+
+	apply viscosity
+}
+
+for each particle i {
+	save previous position
+	xiprev = xi
+
+	advance to predicted position
+	xi = xi + t*vi
+}
+
+adjust springs
+	// modify positions according to springs
+	// double density relaxation, and collisions
+
+applySpringDisplacements
+double Density Relaxation
+resolveCollisions
+
+for each particle i {
+	use previous position to compute next velocity
+	vi = (xi - xiprev)/t
+}
+
+*/
 
 function onFrame(event){
-	
-	if (event.count % TIMESTEP == 0){
-		applyGravity();
-	}
 
-	//applyViscosity
+	applyGravity();
+
+	applyViscosity();
 	
-	for (var i=0; i<numParticles; i++){
-		particles[i].update();
-	}
+	updateParticles();
 
 	adjustSprings();
 
+	//applySpringDisplacements();
+
+	//resolveCollisions();
+
 	doubleDensityRelaxation();
 
-	predictVelocity();
+	//predictVelocity();
 
 	if (metaballOn === true){
 		generateConnections(circlePaths);
 	}
 }
 
-
-
-function applyGravity(){
-	for (var i=0; i<numParticles; i++){
+function applyGravity()
+{
+	for (var i=0; i<numParticles; i++)
+	{
 		particles[i].vy += GRAVITY;
 	}
 }
 
-function predictVelocity(){
-	for (var i=0; i<numParticles; i++){
-		particles[i].predictVelocity();
+function applyViscosity()
+{
+	for (var i=0; i<numParticles; i++)
+	{
+		particles[i].applyViscosity();
 	}
 }
 
-function doubleDensityRelaxation(){
-	for (var i=0; i<numParticles; i++){
-		particles[i].doubleDensityRelaxation();
+function updateParticles()
+{
+	for (var i=0; i<numParticles; i++)
+	{
+		particles[i].update();
 	}
 }
 
-function adjustSprings(){
-	
-	for (var i=0; i<numParticles; i++){
+function adjustSprings()
+{
+	for (var i=0; i<numParticles; i++)
+	{
+		particles[i].findNeighbors();
+		particles[i].calcNeighborQuants();
 		particles[i].adjustSprings();
 	}
 	
@@ -175,13 +187,33 @@ function adjustSprings(){
 	}
 }
 
-function applySpringDisplacements(){
+function applySpringDisplacements()
+{
 	console.log('applying spring displacements');
 }
 
-function resolveCollisions(){
+function resolveCollisions()
+{
 	console.log('resolving collisions');
 }
+
+function doubleDensityRelaxation()
+{
+	for (var i=0; i<numParticles; i++)
+	{
+		particles[i].doubleDensityRelaxation();
+	}
+}
+
+function predictVelocity()
+{
+	for (var i=0; i<numParticles; i++)
+	{
+		particles[i].predictVelocity();
+	}
+}
+
+
 
 
 
@@ -216,6 +248,22 @@ function Particle(x, y, i){
 	this.rijnorm = [];
 	this.q = [];
 
+	// attempting to avoid memory leaks
+	this.checkCellHasMoved = false;
+	this.viscosityux = 0;
+	this.viscosityuy = 0;
+	this.viscosityIx = 0;
+	this.viscosityIy = 0;
+	this.cellParticles;
+	this.cellNeighbors;
+	this._rij;
+	this._rijnorm;
+	this._q;
+	this.dx;
+	this.dy;
+	this.Dx;
+	this.Dy;
+
 	this.circle = new Path.Circle(new Point(x,y), particleCircleRadius);
 	this.circle.fillColor = 'blue'; //new Color(i/numParticles, 0, 1 - i/numParticles);
 	circlePaths.push(this.circle);
@@ -224,6 +272,7 @@ function Particle(x, y, i){
 	this.numTxt.justification = 'center';
 	this.numTxt.fillColor = 'white';
 	this.numTxt.content = this.i;
+
 
 	this.update = function()
 	{
@@ -235,69 +284,6 @@ function Particle(x, y, i){
 
 		//this.point.x = this.x;
 		//this.point.y = this.y;
-
-		//if (this.point === NaN){
-		//	console.log("particle " + this.i + " has gone NANANANANANAN!!!!!");
-		//}
-
-		this.circle.position.x = this.x;
-		this.circle.position.y = this.y;
-
-		this.numTxt.position.x = this.x;
-		this.numTxt.position.y = this.y;
-
-		this.checkCell();
-	}
-
-	this.checkCell = function()
-	{
-		var hasMoved = false;
-		for (var i=1; i<gridNumX; i++){ // can't cross 0 boundary
-			if (this.x > Xboundaries[i] && this.px < Xboundaries[i]){
-				
-				cells[this.cell.x][this.cell.y].deleteParticle(this.i);
-				this.cell.x = i;
-				hasMoved = true;
-			} else if (this.x < Xboundaries[i] && this.px > Xboundaries[i]){
-				
-				cells[this.cell.x][this.cell.y].deleteParticle(this.i);
-				this.cell.x = i-1;
-				hasMoved = true;
-			}
-		}
-
-		for (var j=1; j<gridNumY; j++){ // can't cross 0 boundary
-			if (this.y > Yboundaries[j] && this.py < Yboundaries[j]){
-				
-				cells[this.cell.x][this.cell.y].deleteParticle(this.i);
-				this.cell.y = j;
-				hasMoved = true;
-			} else if (this.y < Yboundaries[j] && this.py > Yboundaries[j]){
-				
-				cells[this.cell.x][this.cell.y].deleteParticle(this.i);
-				this.cell.y = j-1;
-				hasMoved = true;
-			}
-		}
-
-		if (hasMoved === true){
-			cells[this.cell.x][this.cell.y].addParticle(this.i);
-		}
-
-		if (debugcheckParticle === true && this.i === checkParticle){
-			var ci = cells[this.cell.x][this.cell.y];
-			ci.col = 'red';
-			ci.sw = 5;
-			ci.draw();
-		}
-	}
-
-	this.predictVelocity = function()
-	{
-		var svx = signum(this.vx);
-		var svy = signum(this.vy);
-		this.vx = (this.x - this.px);
-		this.vy = (this.y - this.py);
 
 		if (this.y > canvasHeight){
 			this.y = canvasHeight;
@@ -312,37 +298,131 @@ function Particle(x, y, i){
 			}
 			this.vx *= -1;
 		}
+
+		
+		if ( isNaN(this.x) || isNaN(this.y) ){
+			console.log("particle " + this.i + " has gone NANANANANANAN!!!!!");
+			console.log(this.i + ": " + this.x + ", " + this.y);
+			console.log(this.i + ": " + this.vx + ", " + this.vy);
+		}
+
+
+		this.circle.position.x = this.x;
+		this.circle.position.y = this.y;
+
+		this.numTxt.position.x = this.x;
+		this.numTxt.position.y = this.y;
+
+		this.checkCell();
 	}
+
+
+	this.checkCell = function()
+	{
+		this.checkCellHasMoved = false;
+		for (var i=1; i<gridNumX; i++){ // can't cross 0 boundary
+			if (this.x > Xboundaries[i] && this.px < Xboundaries[i]){
+				
+				cells[this.cell.x][this.cell.y].deleteParticle(this.i);
+				this.cell.x = i;
+				this.checkCellHasMoved = true;
+			} else if (this.x < Xboundaries[i] && this.px > Xboundaries[i]){
+				
+				cells[this.cell.x][this.cell.y].deleteParticle(this.i);
+				this.cell.x = i-1;
+				this.checkCellHasMoved = true;
+			}
+		}
+
+		for (var j=1; j<gridNumY; j++){ // can't cross 0 boundary
+			if (this.y > Yboundaries[j] && this.py < Yboundaries[j]){
+				
+				cells[this.cell.x][this.cell.y].deleteParticle(this.i);
+				this.cell.y = j;
+				this.checkCellHasMoved = true;
+			} else if (this.y < Yboundaries[j] && this.py > Yboundaries[j]){
+				
+				cells[this.cell.x][this.cell.y].deleteParticle(this.i);
+				this.cell.y = j-1;
+				this.checkCellHasMoved = true;
+			}
+		}
+
+		if (this.checkCellHasMoved === true){
+			cells[this.cell.x][this.cell.y].addParticle(this.i);
+		}
+
+		if (debugcheckParticle === true && this.i === checkParticle){
+			cells[this.cell.x][this.cell.y].col = 'red';
+			cells[this.cell.x][this.cell.y].sw = 5;
+			cells[this.cell.x][this.cell.y].draw();
+		}
+	}
+
+
+	this.predictVelocity = function()
+	{
+		//var svx = signum(this.vx);
+		//var svy = signum(this.vy);
+		this.vx = (this.x - this.px);
+		this.vy = (this.y - this.py);
+		//var svx2 = signum(this.vx);
+		//var svy2 = signum(this.vy);
+		//if (svx != svx2) this.vx *= -1;
+		//if (svy != svy2) this.vy *= -1;
+	}
+
 
 	this.findNeighbors = function()
 	{
-		var thisCellParticles = cells[this.cell.x][this.cell.y].particles;
-		var thisCellNeighbors = cells[this.cell.x][this.cell.y].neighbors;
+		this.cellParticles = cells[this.cell.x][this.cell.y].particles;
+		this.cellNeighbors = cells[this.cell.x][this.cell.y].neighbors;
 
 		this.neighborParticleIndices = [];
 
-		if (thisCellParticles != null){
-			for (var it=0; it<thisCellParticles.length; it++){
-				if (this.i != thisCellParticles[it]){
-					this.neighborParticleIndices.push(thisCellParticles[it]);
+		if (this.cellParticles != null){
+			for (var it=0; it<this.cellParticles.length; it++){
+				if (this.i != this.cellParticles[it]){
+					this.neighborParticleIndices.push(this.cellParticles[it]);
 				}
 			}
 		}
 
-		if (thisCellNeighbors != null){
-			for (var i=0; i<thisCellNeighbors.length; i++){
-				var cn = cells[ thisCellNeighbors[i][0] ][ thisCellNeighbors[i][1] ];
-				var pcn = cn.particles;
-				if (pcn != null){
-					for (var j=0; j<pcn.length; j++){
-						if (this.i != pcn[j].i){
-							this.neighborParticleIndices.push(pcn[j]);
+		if (this.cellNeighbors != null){
+			for (var i=0; i<this.cellNeighbors.length; i++){
+				//var cn = cells[this.cellNeighbors[i][0]][this.cellNeighbors[i][1]];
+				//var pcn = cn.particles;
+				//if (pcn != null){
+				if (cells[this.cellNeighbors[i][0]][this.cellNeighbors[i][1]].particles != null){
+					for (var j=0; j<cells[this.cellNeighbors[i][0]][this.cellNeighbors[i][1]].particles.length; j++){
+						if (this.i != cells[this.cellNeighbors[i][0]][this.cellNeighbors[i][1]].particles[j].i){
+							this.neighborParticleIndices.push(cells[this.cellNeighbors[i][0]][this.cellNeighbors[i][1]].particles[j]);
 						}
 					}
 				}
 			}
 		}
+
+		/*
+		if (this.i === checkParticle)
+		{
+			//console.log(this.i + " has " + this.neighborParticleIndices.length + " neighbors.");
+			//console.log(this.neighborParticleIndices);
+			var neighborPaths = [];
+			if (this.neighborParticleIndices.length > 0)
+			{	
+				for (var ani = 0; ani < this.neighborParticleIndices.length; ani++)
+				{
+					var ptj = new Point(particles[this.neighborParticleIndices[ani]].x, particles[this.neighborParticleIndices[ani]].y);
+					var p = new Path.Line(ptj, new Point(this.x, this.y));
+					p.strokeColor = 'black';
+					neighborPaths.push(p);
+				}
+			}
+		}
+		*/
 	}
+
 
 	this.calcNeighborQuants = function()
 	{
@@ -351,23 +431,26 @@ function Particle(x, y, i){
 
 		for (var i=0; i<this.neighborParticleIndices.length; i++)
 		{
-			var _rij = new Point(this.x - particles[this.neighborParticleIndices[i]].x, this.y - particles[this.neighborParticleIndices[i]].y);
-			this.rij.push(_rij);
-			var _rijnorm = _rij.normalize();
-			this.rijnorm.push(_rijnorm);
-			var _q = _rij.length/interactionRadius
-			this.q.push(_q);
+			this._rij = new Point(this.x - particles[this.neighborParticleIndices[i]].x, this.y - particles[this.neighborParticleIndices[i]].y);
+			this.rij.push(this._rij);
+			this._rijnorm = this._rij.normalize();
+			this.rijnorm.push(this._rijnorm);
+			this._q = this._rij.length/interactionRadius
+			this.q.push(this._q);
+			
 			if (this.i === checkParticle){
-				console.log("this point: " + this.x + ", " + this.y);
-				console.log("neighbor index: " + this.neighborParticleIndices[i]);
-				console.log("neighbor point: " + particles[this.neighborParticleIndices[i]].x + ", " + particles[this.neighborParticleIndices[i]].y);
-				console.log("rij: " + _rij.x + ", " + _rij.y);
-				console.log("rijlen: " + _rij.length );
-				console.log("rijnorm: " + _rijnorm.x + ", " + _rijnorm.y);
-				console.log('q: ' + _q);
+				//console.log("this point: " + this.x + ", " + this.y);
+				//console.log("neighbor index: " + this.neighborParticleIndices[i]);
+				//console.log("neighbor point: " + particles[this.neighborParticleIndices[i]].x + ", " + particles[this.neighborParticleIndices[i]].y);
+				//console.log("rij: " + _rij.x + ", " + _rij.y);
+				//console.log("rijlen: " + _rij.length );
+				//console.log("rijnorm: " + _rijnorm.x + ", " + _rijnorm.y);
+				//console.log('q: ' + _q);
 			}
+			
 		}
 	}
+
 
 	this.doubleDensityRelaxation = function()
 	{
@@ -378,8 +461,8 @@ function Particle(x, y, i){
 		this.density = 0;
 		this.neardensity = 0;
 
-		this.findNeighbors();
-		this.calcNeighborQuants();
+		//this.findNeighbors();
+		//this.calcNeighborQuants();
 
 		for (var i = 0; i < this.neighborParticleIndices.length; i++)
 		{
@@ -394,8 +477,8 @@ function Particle(x, y, i){
 		this.pressure = STIFFNESSPARAMETER * (this.density - RESTDENSITY);
 		this.nearpressure = STIFFNESSPARAMETER * this.neardensity;
 
-		var dx = 0;
-		var dy = 0;
+		this.dx = 0;
+		this.dy = 0;
 
 		for (var i = 0; i < this.neighborParticleIndices.length; i++)
 		{
@@ -403,52 +486,30 @@ function Particle(x, y, i){
 			if (this.q[i] < 1)
 			{
 				// D <- t sq 
-				var Dx = this.rij[i].length * ( this.pressure * (1-this.q[i]) + this.nearpressure * (1-this.q[i]) * (1-this.q[i]) ) * this.rijnorm[i].x;
-				var Dy = this.rij[i].length * ( this.pressure * (1-this.q[i]) + this.nearpressure * (1-this.q[i]) * (1-this.q[i]) ) * this.rijnorm[i].y;
-				particles[this.neighborParticleIndices[i]].x += Dx/2;
-				particles[this.neighborParticleIndices[i]].y += Dy/2;
-				dx -= Dx/2; 
-				dy -= Dy/2;
+				this.Dx = this.rij[i].length * ( this.pressure * (1-this.q[i]) + this.nearpressure * (1-this.q[i]) * (1-this.q[i]) ) * this.rijnorm[i].x;
+				this.Dy = this.rij[i].length * ( this.pressure * (1-this.q[i]) + this.nearpressure * (1-this.q[i]) * (1-this.q[i]) ) * this.rijnorm[i].y;
+				particles[this.neighborParticleIndices[i]].x += this.Dx/2;
+				particles[this.neighborParticleIndices[i]].y += this.Dy/2;
+				this.dx -= this.Dx/2; 
+				this.dy -= this.Dy/2;
 			}
 		}
 
-		this.x += dx;
-		this.y += dy;
-
-		if (this.i === checkParticle)
-		{
-			var neighborPaths = [];
-			if (this.neighborParticleIndices.length > 0)
-			{
-				//console.log("pos ddr: " + this.x + ", " + this.y);
-				//console.log(this.neighborParticleIndices);
-				//console.log(this.i + " density: " + this.density);
-				//console.log(this.i + " ndensity: " + this.neardensity);
-				//console.log(this.i + " pressure: " + this.pressure);
-				//console.log(this.i + " npressure: " + this.nearpressure);
-				
-				for (var ani = 0; ani < this.neighborParticleIndices.length; ani++)
-				{
-					var ptj = new Point(particles[this.neighborParticleIndices[ani]].x, particles[this.neighborParticleIndices[ani]].y);
-					var p = new Path.Line(ptj, new Point(this.x, this.y));
-					p.strokeColor = 'black';
-					neighborPaths.push(p);
-				}
-			}
-			
-		}
+		this.x += this.dx;
+		this.y += this.dy;
 	}
+
 
 	this.adjustSprings = function()
 	{
-		for (var j = 0; j < this.neighborParticleIndices.length; j++)
+		for (var i = 0; i < this.neighborParticleIndices.length; i++)
 		{
-			var jI = this.neighborParticleIndices[j];
-			var partj = particles[this.neighborParticleIndices[j]];
-			var ptj = new Point(partj.x, partj.y);
-			var rij = this.point.getDistance(ptj);
-			var q = rij/interactionRadius;
-			if (q < 1)
+			var jI = this.neighborParticleIndices[i];
+			//var partj = particles[jI];
+			//var ptj = new Point(partj.x, partj.y);
+			//var rij = this.point.getDistance(ptj);
+			//var q = rij/interactionRadius;
+			if (this.q[i] < 1)
 			{
 				var alreadyThere = false;
 				var spr;
@@ -463,42 +524,67 @@ function Particle(x, y, i){
 
 				if (alreadyThere === false)
 				{
-					if (this.i < jI){
-						spr = new Spring(this.i, j, interactionRadius);
-					}
-					else 
-					{
-						spr = new Spring(j, this.i, interactionRadius);
-					}
+					spr = new Spring(this.i, jI, interactionRadius);
 					springs.push(spr);
 					this.springs.push(spr);
 				}
 
 				var d = SPRINGGAMMA * spr.restLength;
 
-				if (rij > spr.restLength + d)
+				if (this.rij[i].length > spr.restLength + d)
 				{
-					spr.restLength += SPRINGALPHA * (rij - spr.restLength - d);
+					spr.restLength += SPRINGALPHA * (this.rij[i].length - spr.restLength - d);
 				}
-				else if (rij > spr.restLength - d)
+				else if (this.rij[i].length > spr.restLength - d)
 				{
-					spr.restLength -= SPRINGALPHA * (spr.restLength - d - rij);
+					spr.restLength -= SPRINGALPHA * (spr.restLength - d - this.rij[i].length);
+				}
+			}
+		}
+
+		for (s in this.springs){
+			if (s.restLength > interactionRadius)
+			{
+				this.springs.splice(indexOf(s), 1);
+				for (s2 in springs){
+					if ( (s2.a === s.a && s2.b === s.b) || (s2.a === s.b && s2.b === s.a) ){
+						springs.splice(indexOf(s2), 1);
+					}
 				}
 			}
 		}
 	}
 
-	for (s in this.springs){
-		if (s.restLength > interactionRadius)
-		{
-			this.springs.splice(indexOf(s), 1);
-			for (s2 in springs){
-				if ( (s2.a === s.a && s2.b === s.b) || (s2.a === s.b && s2.b === s.a) ){
-					springs.splice(indexOf(s2), 1);
+
+	this.applyViscosity = function()
+	{
+		for (var i = 0; i < this.neighborParticleIndices.length; i++)
+		{	
+			var neighborIndex = this.neighborParticleIndices[i];
+			if (this.q[i] < 1)
+			{
+				
+				this.viscosityux = (this.vx - particles[neighborIndex].vx) * this.rijnorm[i].x;
+				this.viscosityuy = (this.vy - particles[neighborIndex].vy) * this.rijnorm[i].y;
+				//console.log("u: " + ux + ", " + this.viscosityuy);
+				if (this.viscosityux > 0 || this.viscosityuy > 0)
+				{
+					if (this.i === checkParticle){
+						//console.log("pushing against " + neighborIndex);
+					}
+					
+					this.viscosityIx = (1 - this.q[i]) * (VISCOSITYSIGMA*this.viscosityux + VISCOSITYBETA*this.viscosityux*this.viscosityux) * this.rijnorm[i].x;
+					this.viscosityIy = (1 - this.q[i]) * (VISCOSITYSIGMA*this.viscosityuy + VISCOSITYBETA*this.viscosityuy*this.viscosityuy) * this.rijnorm[i].y;
+					//console.log("I: " + this.viscosityIx + ", " + this.viscosityIy);
+					this.vx -= this.viscosityIx/2;
+					this.vy -= this.viscosityIy/2;
+					particles[neighborIndex].vx += this.viscosityIx/2;
+					particles[neighborIndex].vy += this.viscosityIy/2;
 				}
 			}
 		}
 	}
+	
 }
 
 function signum(x){
@@ -646,10 +732,17 @@ function Cell(x, y, i, j){
 function Spring(a, b, restLength) {
   this.a = a;
   this.b = b;
-  if (this.a === 0){
+
+  /*
+  if (this.a === checkParticle || this.b === checkParticle){
+  	console.log("sssssssssssssssssssssssssssssssss");
+  	console.log("in spring creation");
   	console.log(this.a + ", " + this.b);
-  	console.log(particles[this.a].x);
+  	console.log(particles[this.a]);
+  	console.log(isNaN(particles[this.a].x));
+  	console.log("sssssssssssssssssssssssssssssssss");
   }
+  */
   
   this.ptax = particles[this.a].x;
   this.ptay = particles[this.a].y;
@@ -662,35 +755,69 @@ function Spring(a, b, restLength) {
 
   this.restLength = restLength || 80;
   this.strength = SPRINGSTRENGTH;
-  this.rij = new Point();
+  this.rij = new Point(this.pta - this.ptb);
   //this.mamb = values.invMass * values.invMass;
+
+  if (showSpringPaths === true){
+  	this.showPath = new Path.Line(this.pta, this.ptb);
+  	this.showPath.strokeColor = 'red';
+  }
+  
   
   this.update = function()
   {
+  	/*
   	this.ptax = particles[this.a].x;
   	this.ptay = particles[this.a].y;
   	this.ptbx = particles[this.b].x;
   	this.ptby = particles[this.b].y;
+  	*/
+  	//this.pta = particles[this.a].point;
+  	//this.ptb = particles[this.b].point;
+  	//this.rij.x = this.ptax - this.ptbx;
+  	//this.rij.y = this.ptay - this.ptby;
 
-  	this.rij = this.pta - this.ptb;
+  	if (this.a === checkParticle || this.b === checkParticle){
+  		//console.log("rij: " + this.rij.x + ", " + this.rij.y);
+  	}
 
+  	
   	var Lij = this.restLength;
   	var rijnorm = this.rij.normalize();
   	var rijlen = this.rij.length;
-  	var D = SPRINGK * (1 - (Lij/interactionRadius)) * (Lij - this.rijlen) * rijnorm;
-  	if (this.a === 0){
-	  	console.log(D);
+  	var D = SPRINGK * (1 - (Lij/interactionRadius)) * (Lij - rijlen);
+  	var Dx = D * rijnorm.x;
+  	var Dy = D * rijnorm.y;
+  	/*
+  	if (this.a === checkParticle || this.b === checkParticle){
+  		console.log("Lij: " + Lij);
+  		console.log("rijnorm: " + rijnorm);
+  		console.log("rijlen: " + rijlen);
+  		console.log("lij/h: " + (Lij/interactionRadius));
+  		console.log("k*lij/h: " + ( SPRINGK* (Lij/interactionRadius) ) );
+  		console.log("lij-rijlen: " + (Lij - rijlen));
+  		console.log("k * rijnorm.x: " + (SPRINGK*rijnorm.x));
+	  	console.log("d: " + D);
+	  	console.log("dx: " + Dx);
+	  	console.log("dy: " + Dy);
 	  	//console.log(particles[this.a].x);
 	  }
-  	particles[this.a].x -= D.x/2;
-  	particles[this.a].y -= D.y/2;
-  	particles[this.b].x += D.x/2;
-  	particles[this.b].y += D.y/2;
+		*/
+  	particles[this.a].x -= Dx/2;
+  	particles[this.a].y -= Dy/2;
+  	particles[this.b].x += Dx/2;
+  	particles[this.b].y += Dy/2;
+  	
   }
 
   this.render = function(){
-  	var p = new Path.Line(this.pta, this.ptb);
-  	p.strokeColor = 'black';
+  	/*
+  	if (this.a === checkParticle || this.b === checkParticle){
+  		console.log("showPath: " + this.showPath);
+  	}
+  	*/
+  	//this.showPath.segments[0].point = this.pta;
+  	//this.showPath.segments[1].point = this.ptb;
   	//console.log(this.pta.x + ", " + this.pta.y);
   }
   /*
