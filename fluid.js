@@ -8,7 +8,7 @@ var SPRINGALPHA = 0.3;
 var SPRINGK = 0.3;
 var STIFFNESSPARAMETER = 0.004;  // k
 var STIFFNESSPARAMETERNEAR = 0.01;  // k near
-var RESTDENSITY = 10;  // p0
+var RESTDENSITY = 1;  // p0
 var GRAVITY = 0.5;
 var TIMESTEP = 1;
 
@@ -27,9 +27,9 @@ var metaballV = 0.5;
 
 var particleCircleRadius = 20;
 
-var showSpringPaths = true;
+var showSpringPaths = false;
 
-var numParticles = 20;
+var numParticles = 200;
 var particles = {};
 var cells = [];
 var springs = [];
@@ -38,7 +38,7 @@ var interactionRadius = 100;
 var gridSize = interactionRadius;
 var gridNumX, gridNumY;
 var debugcells = false;
-var debugcheckParticle = true;
+var debugcheckParticle = false;
 var checkParticle = 10; // 'tracer bullet'
 var Xboundaries = [];
 var Yboundaries = [];
@@ -125,7 +125,7 @@ for each particle i {
 */
 
 function onFrame(event){
-	console.log(particles[checkParticle]);
+	//console.log(particles[checkParticle]);
 
 	applyGravity();
 
@@ -150,7 +150,7 @@ function onFrame(event){
 
 function applyGravity()
 {
-	for (i in numParticles)
+	for (var i=0; i<numParticles; i++)
 	{
 		particles[i].vy += GRAVITY;
 	}
@@ -557,14 +557,18 @@ function Particle(x, y, i){
 			}
 		}
 
+		this.checkSpringRestLength();
+	}
+
+	this.checkSpringRestLength = function()
+	{
 		if (this.springs.length > 0){
-			
 			for (s in this.springs){
 				//console.log(this.springs[s]);
 				if (this.springs[s] !== undefined)
 				{
 					//console.log(s + " restLength = " + this.springs[s].restLength);
-					if (this.springs[s].restLength > interactionRadius)
+					if (this.springs[s].restLength > interactionRadius || this.springs[s].rijlen > interactionRadius)
 					{
 						//console.log('removing spring ' + s + ' from particle ' + this.i + ' connecting ' + this.springs[s].a + ' and ' + this.springs[s].b);
 						for (s2 in springs){
@@ -791,6 +795,12 @@ function Spring(a, b, restLength) {
   this.strength = SPRINGSTRENGTH;
   this.rij = new Point(this.pta - this.ptb);
   //this.mamb = values.invMass * values.invMass;
+  this.Lij = this.restLength;
+  this.rijnorm = this.rij.normalize();
+  this.rijlen = this.rij.length;
+  this.D;
+  this.Dx;
+  this.Dy;
 
   if (showSpringPaths === true){
   	//console.log('creating new spring path for spring: ' + this.a + " - " + this.b);
@@ -812,31 +822,40 @@ function Spring(a, b, restLength) {
   	this.ptb.x = this.ptbx;
   	this.ptb.y = this.ptby;
   	//this.ptb = particles[this.b].point;
-  	//this.rij.x = this.ptax - this.ptbx;
-  	//this.rij.y = this.ptay - this.ptby;
+  	this.rij.x = this.ptax - this.ptbx;
+  	this.rij.y = this.ptay - this.ptby;
 
-  	var Lij = this.restLength;
-  	var rijnorm = this.rij.normalize();
-  	var rijlen = this.rij.length;
-  	var D = SPRINGK * (1 - (Lij/interactionRadius)) * (Lij - rijlen);
-  	var Dx = D * rijnorm.x;
-  	var Dy = D * rijnorm.y;
+  	this.Lij = this.restLength;
+  	this.rijnorm = this.rij.normalize();
+  	this.rijlen = this.rij.length;
+  	this.D = SPRINGK * (1 - (this.Lij/interactionRadius)) * (this.Lij - this.rijlen);
+  	this.Dx = this.D * this.rijnorm.x;
+  	this.Dy = this.D * this.rijnorm.y;
 
-  	particles[this.a].x -= Dx/2;
-  	particles[this.a].y -= Dy/2;
-  	particles[this.b].x += Dx/2;
-  	particles[this.b].y += Dy/2;
+  	particles[this.a].x -= this.Dx/2;
+  	particles[this.a].y -= this.Dy/2;
+  	particles[this.b].x += this.Dx/2;
+  	particles[this.b].y += this.Dy/2;
 
   	if (showSpringPaths === true){
   		this.render();
   	}
 
+  	/*
   	if (this.restLength > interactionRadius){
-  		//console.log('/////////////////////////////////');
-  		//console.log('// THIS SPRING ' + this.a + ' to ' + this.b + ' SHOULD BE GONE!!! //');
-  		//console.log('// IT IS ' + this.restLength + ' LONG //');
-  		//console.log('/////////////////////////////////');
+  		console.log('/////////////////////////////////');
+  		console.log('// THIS SPRING ' + this.a + ' to ' + this.b + ' SHOULD BE GONE!!! //');
+  		console.log('// IT IS ' + this.restLength + ' LONG //');
+  		console.log('/////////////////////////////////');
   	}
+
+  	if (this.rijlen > interactionRadius){
+  		console.log('/////////////////////////////////');
+  		console.log('// THIS SPRING ' + this.a + ' to ' + this.b + ' SHOULD BE GONE!!! //');
+  		console.log('// IT IS ' + this.rijlen + ' LONG //');
+  		console.log('/////////////////////////////////');
+  	}
+  	*/
   	
   }
 
