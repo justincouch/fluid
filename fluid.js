@@ -125,6 +125,7 @@ for each particle i {
 */
 
 function onFrame(event){
+	console.log(particles[checkParticle]);
 
 	applyGravity();
 
@@ -149,7 +150,7 @@ function onFrame(event){
 
 function applyGravity()
 {
-	for (var i=0; i<numParticles; i++)
+	for (i in numParticles)
 	{
 		particles[i].vy += GRAVITY;
 	}
@@ -229,6 +230,8 @@ function Particle(x, y, i){
 	this.vx = Math.random()*10;
 	this.vy = Math.random()*10;
 
+	this.v = new Point(this.vx, this.vy);
+
 	this.i = i;
 
 	this.cell={
@@ -264,7 +267,10 @@ function Particle(x, y, i){
 	this.Dx;
 	this.Dy;
 
-	this.circle = new Path.Circle(new Point(x,y), particleCircleRadius);
+	this.spr;
+	this.springAlreadyThere;
+
+	this.circle = new Path.Circle(new Point(this.x,this.y), particleCircleRadius);
 	this.circle.fillColor = 'blue'; //new Color(i/numParticles, 0, 1 - i/numParticles);
 	circlePaths.push(this.circle);
 
@@ -312,6 +318,12 @@ function Particle(x, y, i){
 
 		this.numTxt.position.x = this.x;
 		this.numTxt.position.y = this.y;
+
+		if (this.springs.length > 0){
+			this.circle.fillColor = 'red';
+		} else {
+			this.circle.fillColor = 'blue';
+		}
 
 		this.checkCell();
 	}
@@ -511,49 +523,71 @@ function Particle(x, y, i){
 			//var q = rij/interactionRadius;
 			if (this.q[i] < 1)
 			{
-				var alreadyThere = false;
-				var spr;
+				this.springAlreadyThere = false;
+				this.spr = null;
 				for (s in springs)
 				{
-					if ( (s.a === this.i && s.b === jI) || ( s.a === jI && s.b === this.i ) ){
-						spr = s;
-						alreadyThere = true;
+					//console.log(springs[s]);
+					if ( (springs[s].a === this.i && springs[s].b === jI) || ( springs[s].a === jI && springs[s].b === this.i ) ){
+						//console.log('spring[' + s + '] is already connecting ' + this.i + ' and ' + jI);
+						this.spr = springs[s];
+						this.springAlreadyThere = true;
 						break;
 					}
 				}
 
-				if (alreadyThere === false)
+				if (this.springAlreadyThere === false)
 				{
-					spr = new Spring(this.i, jI, interactionRadius);
-					springs.push(spr);
-					this.springs.push(spr);
+					this.spr = new Spring(this.i, jI, interactionRadius);
+					springs.push(this.spr);
+					this.springs.push(this.spr);
+					particles[jI].springs.push(this.spr);
 				}
 
-				var d = SPRINGGAMMA * spr.restLength;
+				var d = SPRINGGAMMA * this.spr.restLength;
 
-				if (this.rij[i].length > spr.restLength + d)
+				if (this.rij[i].length > this.spr.restLength + d)
 				{
-					spr.restLength += SPRINGALPHA * (this.rij[i].length - spr.restLength - d);
+					this.spr.restLength += SPRINGALPHA * (this.rij[i].length - this.spr.restLength - d);
 				}
-				else if (this.rij[i].length > spr.restLength - d)
+				else if (this.rij[i].length > this.spr.restLength - d)
 				{
-					spr.restLength -= SPRINGALPHA * (spr.restLength - d - this.rij[i].length);
+					this.spr.restLength -= SPRINGALPHA * (this.spr.restLength - d - this.rij[i].length);
 				}
 			}
 		}
 
-		for (s in this.springs){
-			if (s.restLength > interactionRadius)
-			{
-				this.springs.splice(indexOf(s), 1);
-				for (s2 in springs){
-					if ( (s2.a === s.a && s2.b === s.b) || (s2.a === s.b && s2.b === s.a) ){
-						springs.splice(indexOf(s2), 1);
+		if (this.springs.length > 0){
+			
+			for (s in this.springs){
+				//console.log(this.springs[s]);
+				if (this.springs[s] !== undefined)
+				{
+					//console.log(s + " restLength = " + this.springs[s].restLength);
+					if (this.springs[s].restLength > interactionRadius)
+					{
+						//console.log('removing spring ' + s + ' from particle ' + this.i + ' connecting ' + this.springs[s].a + ' and ' + this.springs[s].b);
+						for (s2 in springs){
+							if (springs[s2] !== undefined){
+								if ( (springs[s2].a === this.springs[s].a && springs[s2].b === this.springs[s].b) || (springs[s2].a === this.springs[s].b && springs[s2].b === this.springs[s].a) ){
+									//console.log('removing spring ' + s2 + ' from springs ' + ' connecting ' + this.springs[s].a + ' and ' + this.springs[s].b);
+									springs[s2].removeSpring();
+									springs.splice(s2, 1);
+									//console.log('now what is in place of it: spring ' + s2 + ' connects ' + springs[s2].a + ' and ' + springs[s2].b);
+								}
+							}
+						}
+
+						var pind = particles[ this.springs[s].a !== this.i ? this.springs[s].a : this.springs[s].b ];
+						pind.springs.splice( pind.springs.indexOf(this.springs[s]), 1 );
+						this.springs.splice(s, 1);
+
 					}
 				}
 			}
 		}
 	}
+
 
 
 	this.applyViscosity = function()
@@ -753,12 +787,13 @@ function Spring(a, b, restLength) {
   this.ptb = new Point(this.ptbx, this.ptby);
   //console.log(this.pta.x + ", " + this.pta.y);
 
-  this.restLength = restLength || 80;
+  this.restLength = restLength;
   this.strength = SPRINGSTRENGTH;
   this.rij = new Point(this.pta - this.ptb);
   //this.mamb = values.invMass * values.invMass;
 
   if (showSpringPaths === true){
+  	//console.log('creating new spring path for spring: ' + this.a + " - " + this.b);
   	this.showPath = new Path.Line(this.pta, this.ptb);
   	this.showPath.strokeColor = 'red';
   }
@@ -766,47 +801,42 @@ function Spring(a, b, restLength) {
   
   this.update = function()
   {
-  	/*
+  	
   	this.ptax = particles[this.a].x;
   	this.ptay = particles[this.a].y;
   	this.ptbx = particles[this.b].x;
   	this.ptby = particles[this.b].y;
-  	*/
-  	//this.pta = particles[this.a].point;
+  	
+  	this.pta.x = this.ptax;
+  	this.pta.y = this.ptay;
+  	this.ptb.x = this.ptbx;
+  	this.ptb.y = this.ptby;
   	//this.ptb = particles[this.b].point;
   	//this.rij.x = this.ptax - this.ptbx;
   	//this.rij.y = this.ptay - this.ptby;
 
-  	if (this.a === checkParticle || this.b === checkParticle){
-  		//console.log("rij: " + this.rij.x + ", " + this.rij.y);
-  	}
-
-  	
   	var Lij = this.restLength;
   	var rijnorm = this.rij.normalize();
   	var rijlen = this.rij.length;
   	var D = SPRINGK * (1 - (Lij/interactionRadius)) * (Lij - rijlen);
   	var Dx = D * rijnorm.x;
   	var Dy = D * rijnorm.y;
-  	/*
-  	if (this.a === checkParticle || this.b === checkParticle){
-  		console.log("Lij: " + Lij);
-  		console.log("rijnorm: " + rijnorm);
-  		console.log("rijlen: " + rijlen);
-  		console.log("lij/h: " + (Lij/interactionRadius));
-  		console.log("k*lij/h: " + ( SPRINGK* (Lij/interactionRadius) ) );
-  		console.log("lij-rijlen: " + (Lij - rijlen));
-  		console.log("k * rijnorm.x: " + (SPRINGK*rijnorm.x));
-	  	console.log("d: " + D);
-	  	console.log("dx: " + Dx);
-	  	console.log("dy: " + Dy);
-	  	//console.log(particles[this.a].x);
-	  }
-		*/
+
   	particles[this.a].x -= Dx/2;
   	particles[this.a].y -= Dy/2;
   	particles[this.b].x += Dx/2;
   	particles[this.b].y += Dy/2;
+
+  	if (showSpringPaths === true){
+  		this.render();
+  	}
+
+  	if (this.restLength > interactionRadius){
+  		//console.log('/////////////////////////////////');
+  		//console.log('// THIS SPRING ' + this.a + ' to ' + this.b + ' SHOULD BE GONE!!! //');
+  		//console.log('// IT IS ' + this.restLength + ' LONG //');
+  		//console.log('/////////////////////////////////');
+  	}
   	
   }
 
@@ -816,9 +846,23 @@ function Spring(a, b, restLength) {
   		console.log("showPath: " + this.showPath);
   	}
   	*/
-  	//this.showPath.segments[0].point = this.pta;
-  	//this.showPath.segments[1].point = this.ptb;
+  	if (showSpringPaths === true){
+	  	this.showPath.segments[0].point = this.pta;
+	  	//this.showPath.segments[0].point.y = this.ptay;
+	  	this.showPath.segments[1].point = this.ptb;
+	  }
+  	//this.showPath.segments[1].point.y = this.ptby;
   	//console.log(this.pta.x + ", " + this.pta.y);
+  }
+
+  this.removeSpring = function(){
+  	if (showSpringPaths === true){
+	  	//console.log('path from ' + this.a + ' to ' + this.b + ' should be removed');
+	  	this.showPath.strokeColor = 'green';
+	  	var hasIt = this.showPath.remove();
+	  	this.showPath.remove();
+	  	//console.log('has it? ' + hasIt);
+	  }
   }
   /*
   this.acirc = new Path.Circle(this.a, 10);
