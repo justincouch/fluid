@@ -2,18 +2,18 @@
 
 
 
-var SPRINGSTRENGTH = 0.05;
-var SPRINGGAMMA = 0.1;
+//var SPRINGSTRENGTH = 0.5;
+var SPRINGGAMMA = 0.003;
 var SPRINGALPHA = 0.3; // 0.3
 var SPRINGK = 0.3; // 0.3
-var STIFFNESSPARAMETER = 0.008;  // k // 0.004
-var STIFFNESSPARAMETERNEAR = 0.02;  // k near // 0.01
-var RESTDENSITY = 10;  // p0 // 10
-var GRAVITY = 0.2;
+var STIFFNESSPARAMETER = 0.1;  // k // 0.004
+var STIFFNESSPARAMETERNEAR = 02;  // k near // 0.01
+var RESTDENSITY = 1;  // p0 // 10
+var GRAVITY = 0.01;
 var TIMESTEP = 1;
 
-var VISCOSITYSIGMA = 0.001;
-var VISCOSITYBETA = 0.001;
+var VISCOSITYSIGMA = 0.004;
+var VISCOSITYBETA = 0.04;
 
 ////////////////////////////////////////////////
 // METABALLS //
@@ -25,27 +25,27 @@ var connections = new Group();
 var metaballMaxDistance = 150;
 var metaballV = 0.5;
 
-var particleCircleRadius = 20;
+var particleCircleRadius = 8;
 
-var showSpringPaths = true;
+var showSpringPaths = false;
 var debugcells = false;
-var debugcheckParticle = true;
+var debugcheckParticle = false;
 
-var numParticles = 20;
+var numParticles = 32;
 var particles = {};
 var cells = [];
 var springs = [];
 var neighbors = [];
 
-var interactionRadius = 100;
+var interactionRadius = 32;
 var gridSize = interactionRadius;
 var gridNumX, gridNumY;
 
 var checkParticle = 10; // 'tracer bullet'
 var Xboundaries = [];
 var Yboundaries = [];
-var canvasWidth = 1600;
-var canvasHeight = 900;
+var canvasWidth = 400;
+var canvasHeight = 300;
 var NEIGHBORLIST = [ [-1,-1] , [ 0,-1] , [ 1,-1] ,
 										 [-1, 0] , [ 0, 0] , [ 1, 0] ,
 										 [-1, 1] , [ 0, 1] , [ 1, 1] ];
@@ -71,7 +71,7 @@ function init(){
 	gridNumY = Math.ceil(canvasHeight/gridSize);
 
 	for (var i=0; i<numParticles; i++){
-		particles[i] = new Particle(Math.random()*canvasWidth, Math.random()*canvasHeight, i);
+		particles[i] = new Particle(Math.random()*canvasWidth/2, Math.random()*canvasHeight, i);
 		if (debugcheckParticle === true && i === checkParticle){
 			particles[i].circle.strokeColor = 'green';
 		}
@@ -152,11 +152,13 @@ for each particle i {
 */
 
 function onFrame(event){
-	//console.log(particles[checkParticle]);
+	console.log(event.count);
 
 	findNeighbors();
 
 	applyGravity();
+
+	//updateNeighbors();
 
 	applyViscosity();
 	
@@ -179,9 +181,9 @@ function onFrame(event){
 
 function findNeighbors()
 {
-	console.log(neighbors);
+	//console.log(neighbors);
 	neighbors = [];
-	console.log(neighbors);
+	//console.log(neighbors);
 	for (i in particles)
 	{
 		particles[i].findNeighbors();
@@ -193,6 +195,14 @@ function applyGravity()
 	for (i in particles)
 	{
 		particles[i].vy += GRAVITY;
+	}
+}
+
+function updateNeighbors()
+{
+	for (i in neighbors)
+	{
+		neighbors[i].update();
 	}
 }
 
@@ -274,8 +284,10 @@ function Particle(x, y, i){
 	this.px = 0;
 	this.py = 0;
 
-	this.vx = Math.random()*10;
-	this.vy = Math.random()*10;
+	//this.vx = Math.random()*10-5;
+	//this.vy = Math.random()*10-5;
+	this.vx = 0;
+	this.vy = 0;
 
 	this.v = new Point(this.vx, this.vy);
 
@@ -321,11 +333,12 @@ function Particle(x, y, i){
 	this.circle.fillColor = 'blue'; //new Color(i/numParticles, 0, 1 - i/numParticles);
 	circlePaths.push(this.circle);
 
+	/*
 	this.numTxt = new PointText(this.point);
 	this.numTxt.justification = 'center';
 	this.numTxt.fillColor = 'white';
 	this.numTxt.content = this.i;
-
+	*/
 
 	this.update = function()
 	{
@@ -335,12 +348,12 @@ function Particle(x, y, i){
 		this.x += this.vx;
 		this.y += this.vy;
 
-		//this.point.x = this.x;
-		//this.point.y = this.y;
+		this.point.x = this.x;
+		this.point.y = this.y;
 
 		if (this.y > canvasHeight){
 			this.y = canvasHeight;
-			this.vy *= -1;
+			this.vy *= -0.5;
 		}
 
 		if (this.x < 0 || this.x > canvasWidth){
@@ -349,7 +362,7 @@ function Particle(x, y, i){
 			} else if (this.x>canvasWidth){
 				this.x = canvasWidth;
 			}
-			this.vx *= -1;
+			this.vx *= -0.5;
 		}
 
 		
@@ -363,14 +376,18 @@ function Particle(x, y, i){
 		this.circle.position.x = this.x;
 		this.circle.position.y = this.y;
 
+		/*
 		this.numTxt.position.x = this.x;
 		this.numTxt.position.y = this.y;
+		*/
 
+		/*
 		if (this.springs.length > 0){
 			this.circle.fillColor = 'red';
 		} else {
 			this.circle.fillColor = 'blue';
 		}
+		*/
 
 		this.checkCell();
 	}
@@ -443,8 +460,8 @@ function Particle(x, y, i){
 			for (var it=0; it<this.cellParticles.length; it++){
 				if (this.i != this.cellParticles[it]){
 					this.neighborParticleIndices.push(this.cellParticles[it]);
-					
-					neighbors.push( new Neighbors(this.i, this.cellParticles[it]) );
+
+					//neighbors.push( new Neighbors(this.i, this.cellParticles[it]) );
 				}
 			}
 		}
@@ -458,10 +475,53 @@ function Particle(x, y, i){
 					for (var j=0; j<cells[this.cellNeighbors[i][0]][this.cellNeighbors[i][1]].particles.length; j++){
 						if (this.i != cells[this.cellNeighbors[i][0]][this.cellNeighbors[i][1]].particles[j].i){
 							this.neighborParticleIndices.push(cells[this.cellNeighbors[i][0]][this.cellNeighbors[i][1]].particles[j]);
-							neighbors.push( new Neighbors( this.i, cells[ this.cellNeighbors[i][0] ][ this.cellNeighbors[i][1] ].particles[j] ) );
+							//neighbors.push( new Neighbors( this.i, cells[ this.cellNeighbors[i][0] ][ this.cellNeighbors[i][1] ].particles[j] ) );
 						}
 					}
 				}
+			}
+		}
+
+		/*
+		if(this.i === checkParticle){
+			console.log(this.neighborParticleIndices);
+		}
+		*/
+
+		for (j in this.neighborParticleIndices)
+		{
+			// this.neighborParticleIndices[j]
+			/*
+			if(this.i === checkParticle){
+				console.log(this.neighborParticleIndices[j]);
+			}
+			*/
+			var I;
+			var J;
+			if (this.i < this.neighborParticleIndices[j])
+			{
+				I = this.i;
+				J = this.neighborParticleIndices[j];
+			}
+			else 
+			{
+				I = this.neighborParticleIndices[j];
+				J = this.i;
+			}
+
+			var neighborAlreadyThere = false;
+			for (k in neighbors)
+			{
+				if ( (neighbors[k].i === I && neighbors[k].j === J) || (neighbors[k].i === J && neighbors[k].j === I) )
+				{
+					neighborAlreadyThere = true;
+				}
+			}
+
+			if (neighborAlreadyThere === false)
+			{
+				//console.log('adding neighbor ' + I + ', ' + J);
+				neighbors.push( new Neighbors(I, J) );
 			}
 		}
 
@@ -483,6 +543,7 @@ function Particle(x, y, i){
 			}
 		}
 		*/
+		
 	}
 
 	
@@ -497,17 +558,17 @@ function Particle(x, y, i){
 			this.rij.push(this._rij);
 			this._rijnorm = this._rij.normalize();
 			this.rijnorm.push(this._rijnorm);
-			this._q = this._rij.length/interactionRadius
+			this._q = this._rij.length/interactionRadius;
 			this.q.push(this._q);
 			
 			if (this.i === checkParticle){
 				//console.log("this point: " + this.x + ", " + this.y);
 				//console.log("neighbor index: " + this.neighborParticleIndices[i]);
 				//console.log("neighbor point: " + particles[this.neighborParticleIndices[i]].x + ", " + particles[this.neighborParticleIndices[i]].y);
-				//console.log("rij: " + _rij.x + ", " + _rij.y);
-				//console.log("rijlen: " + _rij.length );
-				//console.log("rijnorm: " + _rijnorm.x + ", " + _rijnorm.y);
-				//console.log('q: ' + _q);
+				//console.log("rij: " + this._rij.x + ", " + this._rij.y);
+				//console.log("rijlen: " + this._rij.length );
+				//console.log("rijnorm: " + this._rijnorm.x + ", " + this._rijnorm.y);
+				//console.log('q: ' + this._q);
 			}
 			
 		}
@@ -527,9 +588,9 @@ function Particle(x, y, i){
 		//this.findNeighbors();
 		//this.calcNeighborQuants();
 
-		for (var i = 0; i < this.neighborParticleIndices.length; i++)
+		for (i in this.neighborParticleIndices)
 		{
-			
+			if (this.i === checkParticle) console.log(this.q[i]);
 			if (this.q[i] < 1)
 			{
 				this.density += (1-this.q[i])*(1-this.q[i]);
@@ -537,13 +598,23 @@ function Particle(x, y, i){
 			}
 		}
 
+		if (this.i === checkParticle){
+			console.log("density: " + this.density);
+			console.log("near density: " + this.neardensity);
+		}
+
 		this.pressure = STIFFNESSPARAMETER * (this.density - RESTDENSITY);
-		this.nearpressure = STIFFNESSPARAMETER * this.neardensity;
+		this.nearpressure = STIFFNESSPARAMETERNEAR * this.neardensity;
+
+		if (this.i === checkParticle){
+			console.log("pressure: " + this.pressure);
+			console.log("near pressure: " + this.nearpressure);
+		}
 
 		this.dx = 0;
 		this.dy = 0;
 
-		for (var i = 0; i < this.neighborParticleIndices.length; i++)
+		for (i in this.neighborParticleIndices)
 		{
 			
 			if (this.q[i] < 1)
@@ -560,6 +631,10 @@ function Particle(x, y, i){
 
 		this.x += this.dx;
 		this.y += this.dy;
+
+		if (this.i === checkParticle){
+			//console.log("pos ddr: " + this.x + ", " + this.y);
+		}
 	}
 
 	/*
@@ -666,10 +741,10 @@ function Neighbors(i, j){
 	this.particlei = particles[this.i];
 	this.particlej = particles[this.j];
 
-	this.pti = this.particlei.point;
-	this.ptj = this.particlej.point;
+	this.pti = new Point(this.particlei.x, this.particlei.y);
+	this.ptj = new Point(this.particlej.x, this.particlej.y);
 
-	this.rij = new Point(this.pti - this.ptj);
+	this.rij = new Point( (this.pti.x - this.ptj.x), (this.pti.y - this.ptj.y) );
 
 	this.q = this.rij.length/interactionRadius;
 
@@ -693,15 +768,19 @@ function Neighbors(i, j){
 		}
 		else if (this.j === checkParticle) 
 		{
-			this.other === this.i;
+			this.other = this.i;
 		} 
 		else 
 		{
 			console.log('why is neighbor undefined?');
 		}
-		console.log('neighbors with: ' + this.other);
-		console.log(this.q);
-		console.log(this.rij.length);
+	}
+
+	this.update = function()
+	{
+		this.rij = this.pti - this.ptj;
+		this.q = this.rij.length/interactionRadius;
+		
 	}
 
 	this.applyViscosity = function()
@@ -728,16 +807,16 @@ function Neighbors(i, j){
 
 	this.adjustSprings = function()
 	{
-		
 		if (this.q < 1)
 		{
 			this.springAlreadyThere = false;
 			this.spr = null;
+
 			for (s in springs)
 			{
 				//console.log(springs[s]);
 				if ( (springs[s].a === this.i && springs[s].b === this.j) || ( springs[s].a === this.j && springs[s].b === this.i ) ){
-					//console.log('spring[' + s + '] is already connecting ' + this.i + ' and ' + jI);
+					//console.log('spring[' + s + '] is already connecting ' + this.i + ' and ' + this.j);
 					this.spr = springs[s];
 					this.springAlreadyThere = true;
 					break;
@@ -746,6 +825,7 @@ function Neighbors(i, j){
 
 			if (this.springAlreadyThere === false)
 			{
+				//console.log('creating a spring because springAlreadyThere is false');
 				this.spr = new Spring(this.i, this.j, interactionRadius);
 				springs.push(this.spr);
 				//this.springs.push(this.spr);
@@ -753,6 +833,7 @@ function Neighbors(i, j){
 			}
 
 			this.d = SPRINGGAMMA * this.spr.restLength;
+			//onsole.log('d: ' + this.d);
 
 			if (this.rij.length > this.spr.restLength + this.d)
 			{
@@ -763,24 +844,27 @@ function Neighbors(i, j){
 				this.spr.restLength -= SPRINGALPHA * (this.spr.restLength - this.d - this.rij.length);
 			}
 		}
-		
+		//console.log(springs);
 		this.checkSpringRestLength();
 	}
 
 	this.checkSpringRestLength = function()
 	{
+		//console.log(springs.length);
 		for (s in springs){
-			//console.log(this.springs[s]);
+			//console.log(springs[s]);
 			if (springs[s] !== undefined)
 			{
-				//console.log(s + " restLength = " + this.springs[s].restLength);
+				//console.log(s + " restLength = " + springs[s].restLength + ", rijlen = " + springs[s].rijlen);
 				if (springs[s].restLength > interactionRadius || springs[s].rijlen > interactionRadius*2)
 				{
+					//console.log('removing spring');
 					springs[s].removeSpring();
 					springs.splice(s, 1);	
 				}
 			}
 		}
+
 	}
 }
 
@@ -976,7 +1060,7 @@ function Spring(a, b, restLength) {
 
   this.restLength = restLength;
   //this.strength = SPRINGSTRENGTH;
-  this.rij = new Point(this.pta - this.ptb);
+  this.rij = new Point( (this.ptax - this.ptbx), (this.ptay - this.ptby) );
   //this.mamb = values.invMass * values.invMass;
   this.Lij = this.restLength;
   this.rijnorm = this.rij.normalize();
