@@ -3,14 +3,15 @@
 
 
 //var SPRINGSTRENGTH = 0.5;
-var SPRINGGAMMA = 0.003;
+var SPRINGGAMMA = 0.03;
 var SPRINGALPHA = 0.3; // 0.3
 var SPRINGK = 0.3; // 0.3
-var STIFFNESSPARAMETER = 0.1;  // k // 0.004
-var STIFFNESSPARAMETERNEAR = 02;  // k near // 0.01
-var RESTDENSITY = 1;  // p0 // 10
-var GRAVITY = 0.01;
-var TIMESTEP = 1;
+var STIFFNESSPARAMETER = 0.04;  // k // 0.004
+var STIFFNESSPARAMETERNEAR = 0.1;  // k near // 0.01
+var RESTDENSITY = 2;  // p0 // 10
+var GRAVITY = 0.1;
+var FPS = 2;
+var TIMESTEP = 1/FPS;
 
 var VISCOSITYSIGMA = 0.004;
 var VISCOSITYBETA = 0.04;
@@ -25,13 +26,14 @@ var connections = new Group();
 var metaballMaxDistance = 150;
 var metaballV = 0.5;
 
-var particleCircleRadius = 8;
+var particleCircleRadius = 2;
 
-var showSpringPaths = false;
+var showSpringPaths = true;
+var showNeighborPaths = false;
 var debugcells = false;
 var debugcheckParticle = false;
 
-var numParticles = 32;
+var numParticles = 64;
 var particles = {};
 var cells = [];
 var springs = [];
@@ -194,7 +196,7 @@ function applyGravity()
 {
 	for (i in particles)
 	{
-		particles[i].vy += GRAVITY;
+		particles[i].vy += TIMESTEP*GRAVITY;
 	}
 }
 
@@ -345,8 +347,8 @@ function Particle(x, y, i){
 		this.px = this.x;
 		this.py = this.y;
 
-		this.x += this.vx;
-		this.y += this.vy;
+		this.x += TIMESTEP * this.vx;
+		this.y += TIMESTEP * this.vy;
 
 		this.point.x = this.x;
 		this.point.y = this.y;
@@ -440,8 +442,8 @@ function Particle(x, y, i){
 	{
 		//var svx = signum(this.vx);
 		//var svy = signum(this.vy);
-		this.vx = (this.x - this.px);
-		this.vy = (this.y - this.py);
+		this.vx = (this.x - this.px) / TIMESTEP;
+		this.vy = (this.y - this.py) / TIMESTEP;
 		//var svx2 = signum(this.vx);
 		//var svy2 = signum(this.vy);
 		//if (svx != svx2) this.vx *= -1;
@@ -554,7 +556,19 @@ function Particle(x, y, i){
 
 		for (var i=0; i<this.neighborParticleIndices.length; i++)
 		{
-			this._rij = new Point(this.x - particles[this.neighborParticleIndices[i]].x, this.y - particles[this.neighborParticleIndices[i]].y);
+			if (this.i < this.neighborParticleIndices[i])
+			{
+				this._rij = new Point(this.x - particles[this.neighborParticleIndices[i]].x, this.y - particles[this.neighborParticleIndices[i]].y);
+			} 
+			else if (this.neighborParticleIndices[i] < this.i)
+			{
+				this._rij = new Point(particles[this.neighborParticleIndices[i]].x - this.x, particles[this.neighborParticleIndices[i]].y -  this.y);
+			}
+			else 
+			{
+				console.log('somethings gone wrong with the quants');
+			}
+			
 			this.rij.push(this._rij);
 			this._rijnorm = this._rij.normalize();
 			this.rijnorm.push(this._rijnorm);
@@ -590,26 +604,19 @@ function Particle(x, y, i){
 
 		for (i in this.neighborParticleIndices)
 		{
-			if (this.i === checkParticle) console.log(this.q[i]);
+			if (this.i === checkParticle){
+				//console.log(this.q[i]);
+			}
 			if (this.q[i] < 1)
 			{
 				this.density += (1-this.q[i])*(1-this.q[i]);
 				this.neardensity += (1-this.q[i])*(1-this.q[i])*(1-this.q[i]);
 			}
-		}
-
-		if (this.i === checkParticle){
-			console.log("density: " + this.density);
-			console.log("near density: " + this.neardensity);
+			
 		}
 
 		this.pressure = STIFFNESSPARAMETER * (this.density - RESTDENSITY);
 		this.nearpressure = STIFFNESSPARAMETERNEAR * this.neardensity;
-
-		if (this.i === checkParticle){
-			console.log("pressure: " + this.pressure);
-			console.log("near pressure: " + this.nearpressure);
-		}
 
 		this.dx = 0;
 		this.dy = 0;
@@ -620,8 +627,9 @@ function Particle(x, y, i){
 			if (this.q[i] < 1)
 			{
 				// D <- t sq 
-				this.Dx = this.rij[i].length * ( this.pressure * (1-this.q[i]) + this.nearpressure * (1-this.q[i]) * (1-this.q[i]) ) * this.rijnorm[i].x;
-				this.Dy = this.rij[i].length * ( this.pressure * (1-this.q[i]) + this.nearpressure * (1-this.q[i]) * (1-this.q[i]) ) * this.rijnorm[i].y;
+				this.Dx = TIMESTEP * TIMESTEP * this.rij[i].length * ( ( this.pressure * (1-this.q[i]) ) + ( this.nearpressure * ( (1-this.q[i]) * (1-this.q[i]) ) ) ) * this.rijnorm[i].x;
+				this.Dy = TIMESTEP * TIMESTEP * this.rij[i].length * ( ( this.pressure * (1-this.q[i]) ) + ( this.nearpressure * ( (1-this.q[i]) * (1-this.q[i]) ) ) ) * this.rijnorm[i].y;
+
 				particles[this.neighborParticleIndices[i]].x += this.Dx/2;
 				particles[this.neighborParticleIndices[i]].y += this.Dy/2;
 				this.dx -= this.Dx/2; 
@@ -792,8 +800,8 @@ function Neighbors(i, j){
 			//console.log("u: " + this.viscosityux + ", " + this.viscosityuy);
 			if (this.viscosityux > 0 || this.viscosityuy > 0)
 			{
-				this.viscosityIx = (1 - this.q) * (VISCOSITYSIGMA*this.viscosityux + VISCOSITYBETA*this.viscosityux*this.viscosityux) * this.rij.normalize().x;
-				this.viscosityIy = (1 - this.q) * (VISCOSITYSIGMA*this.viscosityuy + VISCOSITYBETA*this.viscosityuy*this.viscosityuy) * this.rij.normalize().y;
+				this.viscosityIx = TIMESTEP * (1 - this.q) * (VISCOSITYSIGMA*this.viscosityux + VISCOSITYBETA*this.viscosityux*this.viscosityux) * this.rij.normalize().x;
+				this.viscosityIy = TIMESTEP * (1 - this.q) * (VISCOSITYSIGMA*this.viscosityuy + VISCOSITYBETA*this.viscosityuy*this.viscosityuy) * this.rij.normalize().y;
 				//console.log("I: " + this.viscosityIx + ", " + this.viscosityIy);
 				
 				this.particlei.vx -= this.viscosityIx/2;
@@ -837,11 +845,11 @@ function Neighbors(i, j){
 
 			if (this.rij.length > this.spr.restLength + this.d)
 			{
-				this.spr.restLength += SPRINGALPHA * (this.rij.length - this.spr.restLength - this.d);
+				this.spr.restLength += TIMESTEP * SPRINGALPHA * (this.rij.length - interactionRadius - this.d);
 			}
 			else if (this.rij.length > this.spr.restLength - this.d)
 			{
-				this.spr.restLength -= SPRINGALPHA * (this.spr.restLength - this.d - this.rij.length);
+				this.spr.restLength -= TIMESTEP * SPRINGALPHA * (interactionRadius - this.d - this.rij.length);
 			}
 		}
 		//console.log(springs);
@@ -1095,7 +1103,7 @@ function Spring(a, b, restLength) {
   	this.Lij = this.restLength;
   	this.rijnorm = this.rij.normalize();
   	this.rijlen = this.rij.length;
-  	this.D = SPRINGK * (1 - (this.Lij/interactionRadius)) * (this.Lij - this.rijlen);
+  	this.D = TIMESTEP * TIMESTEP * SPRINGK * (1 - (this.Lij/interactionRadius)) * (this.Lij - this.rijlen);
   	this.Dx = this.D * this.rijnorm.x;
   	this.Dy = this.D * this.rijnorm.y;
 
